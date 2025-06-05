@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "cli": "node ./cli/index.js"
   },
   "repository": {
     "type": "git",
@@ -19,8 +19,12 @@
   "homepage": "https://github.com/tomsl123/neo4j-demo#readme",
   "description": "A simple node CLI application demonstrating Neo4j integration",
   "dependencies": {
+    "chalk": "^5.4.1",
     "dotenv": "^16.5.0",
     "dotenv-expand": "^12.0.2",
+    "figlet": "^1.8.1",
+    "inquirer": "^12.6.3",
+    "nanospinner": "^1.2.2",
     "neo4j-driver": "^5.28.1"
   }
 }
