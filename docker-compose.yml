@@ -1,14 +1,38 @@
 services:
+  ############################################
+  # ⬡  ONLINE DATABASE
+  ############################################
   neo4j:
     image: neo4j:latest
+    container_name: neo4j
     volumes:
       - ./neo4j/logs:/logs
       - ./neo4j/config:/config
       - ./neo4j/data:/data
       - ./neo4j/plugins:/plugins
+      - ./neo4j/backup:/backup        # <- store dumps here
     environment:
       - NEO4J_AUTH=neo4j/password
     ports:
       - "7474:7474"
       - "7687:7687"
     restart: always
+
+  ############################################
+  # ⬡  OFFLINE ADMIN HELPER
+  ############################################
+  neo4j-admin:
+    image: neo4j:latest
+    profiles: [admin]      # opt-in service
+    working_dir: /var/lib/neo4j
+    environment:
+      - NEO4J_HOME=/var/lib/neo4j
+    entrypoint: /bin/bash
+    command: -c "tail -f /dev/null" # keep it idle
+    volumes:
+      - ./neo4j/logs:/logs
+      - ./neo4j/config:/config
+      - ./neo4j/data:/data
+      - ./neo4j/plugins:/plugins
+      - ./neo4j/backup:/backup
+    restart: "no"
