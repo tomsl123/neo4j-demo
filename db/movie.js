@@ -1,145 +1,204 @@
-import {getSession} from "./index.js";
+import { getSession } from "./index.js";
 import neo4j from "neo4j-driver";
 
-// Basic CRUD
+/**
+ * Create a movie
+ * @param {Object} params
+ * @param {string} params.title
+ * @param {number} params.year
+ * @param {number} params.runtime
+ * @param {string} params.language
+ * @param {string} params.releaseDate
+ * @returns {Promise<void>}
+ */
 async function createMovie({ title, year, runtime, language, releaseDate }) {
-    const session = getSession()
-    try {
-        await session.run(
-            `
+  const session = getSession();
+  try {
+    await session.run(
+      `
       MERGE (m:Movie {title: $title})
       SET m.year = $year,
           m.runtime = $runtime,
           m.original_language = $language,
           m.release_date = $releaseDate
       `,
-            { title, year, runtime, language, releaseDate }
-        )
-    } finally {
-        await session.close()
-    }
+      { title, year, runtime, language, releaseDate }
+    );
+  } finally {
+    await session.close();
+  }
 }
 
+/**
+ * Get a movie by title
+ * @param {string} title
+ * @returns {Promise<Object>}
+ */
 async function getMovie(title) {
-    const session = getSession()
-    const result = await session.run(
-        'MATCH (m:Movie {title: $title}) RETURN m',
-        { title }
-    )
-    await session.close()
-    return result.records.map(r => r.get('m').properties)
+  const session = getSession();
+  const result = await session.run("MATCH (m:Movie {title: $title}) RETURN m", {
+    title,
+  });
+  await session.close();
+  return result.records.map((r) => r.get("m").properties);
 }
 
+/**
+ * Update a movie
+ * @param {string} title
+ * @param {Object} updates
+ * @returns {Promise<void>}
+ */
 async function updateMovie(title, updates) {
-    const session = getSession()
-    const updateQuery = []
-    for (const key of Object.keys(updates)) {
-        updateQuery.push(`m.${key} = $${key}`)
-    }
-    await session.run(
-        `MATCH (m:Movie {title: $title}) SET ${updateQuery.join(', ')}`,
-        { title, ...updates }
-    )
-    await session.close()
+  const session = getSession();
+  const updateQuery = [];
+  for (const key of Object.keys(updates)) {
+    updateQuery.push(`m.${key} = $${key}`);
+  }
+  await session.run(
+    `MATCH (m:Movie {title: $title}) SET ${updateQuery.join(", ")}`,
+    { title, ...updates }
+  );
+  await session.close();
 }
 
+/**
+ * Delete a movie
+ * @param {string} title
+ * @returns {Promise<void>}
+ */
 async function deleteMovie(title) {
-    const session = getSession()
-    await session.run(
-        'MATCH (m:Movie {title: $title}) DETACH DELETE m',
-        { title }
-    )
-    await session.close()
+  const session = getSession();
+  await session.run("MATCH (m:Movie {title: $title}) DETACH DELETE m", {
+    title,
+  });
+  await session.close();
 }
 
-// Relationship helpers
+/**
+ * Get all actors in a movie
+ * @param {string} title
+ * @returns {Promise<string[]>}
+ */
 async function getAllActors(title) {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (m:Movie {title: $title})<-[:ACTED_IN]-(a:Actor)
     RETURN a.name
     `,
-        { title }
-    )
-    await session.close()
-    return result.records.map(r => r.get('a.name'))
+    { title }
+  );
+  await session.close();
+  return result.records.map((r) => r.get("a.name"));
 }
 
+/**
+ * Get all genres in a movie
+ * @param {string} title
+ * @returns {Promise<string[]>}
+ */
 async function getGenre(title) {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (m:Movie {title: $title})-[:HAS_GENRE]->(g)
     RETURN g.name
     `,
-        { title }
-    )
-    await session.close()
-    return result.records.map(r => r.get('g.name'))
+    { title }
+  );
+  await session.close();
+  return result.records.map((r) => r.get("g.name"));
 }
 
+/**
+ * Get all directors in a movie
+ * @param {string} title
+ * @returns {Promise<string[]>}
+ */
 async function getDirector(title) {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (m:Movie {title: $title})-[:DIRECTED_BY]->(d)
     RETURN d.name
     `,
-        { title }
-    )
-    await session.close()
-    return result.records.map(r => r.get('d.name'))
+    { title }
+  );
+  await session.close();
+  return result.records.map((r) => r.get("d.name"));
 }
 
+/**
+ * Get the most popular movie
+ * @returns {Promise<string>}
+ */
 async function getMostPopular() {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (m:Movie)<-[r:RATED]-()
     RETURN m.title AS title, avg(r.rating) AS avgRating
     ORDER BY avgRating DESC
     LIMIT 1
     `
-    )
-    await session.close()
-    return result.records[0]?.get('title') || null
+  );
+  await session.close();
+  return result.records[0]?.get("title") || null;
 }
 
+/**
+ * Get the least popular movie
+ * @returns {Promise<string>}
+ */
 async function getLeastPopular() {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (m:Movie)<-[r:RATED]-()
     RETURN m.title AS title, avg(r.rating) AS avgRating
     ORDER BY avgRating ASC
     LIMIT 1
     `
-    )
-    await session.close()
-    return result.records[0]?.get('title') || null
+  );
+  await session.close();
+  return result.records[0]?.get("title") || null;
 }
 
+/**
+ * Get the top 10 movies in a genre
+ * @param {string} genreName
+ * @returns {Promise<Object[]>}
+ */
 async function getTop10InGenre(genreName) {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre {name: $genreName})
     MATCH (m)<-[r:RATED]-()
     RETURN m.title AS title, avg(r.rating) AS avgRating
     ORDER BY avgRating DESC
     LIMIT 10
     `,
-        { genreName }
-    )
-    await session.close()
-    return result.records.map(r => ({ title: r.get('title'), avgRating: r.get('avgRating') }))
+    { genreName }
+  );
+  await session.close();
+  return result.records.map((r) => ({
+    title: r.get("title"),
+    avgRating: r.get("avgRating"),
+  }));
 }
 
+/**
+ * Recommend movies by similarity
+ * @param {string[]} likedTitles
+ * @param {number} amount
+ * @returns {Promise<string[]>}
+ */
 async function recommendMoviesBySimilarity(likedTitles, amount = 10) {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (u:User)-[r:RATED]->(m:Movie)
     WHERE m.title IN $likedTitles AND r.rating >= 4
     WITH u, COUNT(m) AS overlap
@@ -150,16 +209,22 @@ async function recommendMoviesBySimilarity(likedTitles, amount = 10) {
     ORDER BY score DESC
     LIMIT $amount
     `,
-        { likedTitles, amount: neo4j.int(amount) }
-    )
-    await session.close()
-    return result.records.map(r => r.get('rec.title'))
+    { likedTitles, amount: neo4j.int(amount) }
+  );
+  await session.close();
+  return result.records.map((r) => r.get("rec.title"));
 }
 
+/**
+ * Recommend movies by content
+ * @param {string[]} titles
+ * @param {number} amount
+ * @returns {Promise<string[]>}
+ */
 async function recommendContentBased(titles, amount = 10) {
-    const session = getSession()
-    const result = await session.run(
-        `
+  const session = getSession();
+  const result = await session.run(
+    `
     UNWIND $titles AS inputTitle
     MATCH (m:Movie {title: inputTitle})
     
@@ -184,23 +249,38 @@ async function recommendContentBased(titles, amount = 10) {
     ORDER BY score DESC
     LIMIT $amount
     `,
-        { titles, amount: neo4j.int(amount) }
-    )
-    await session.close()
-    return result.records.map(r => r.get('title'))
+    { titles, amount: neo4j.int(amount) }
+  );
+  await session.close();
+  return result.records.map((r) => r.get("title"));
 }
 
-async function recommendByAttributes({
-                                         genres = [],
-                                         directors = [],
-                                         actors = [],
-                                         runtime = null,
-                                         language = null,
-                                         releaseDecade = null
-                                     }, amount = 10) {
-    const session = getSession()
-    const result = await session.run(
-        `
+/**
+ * Recommend movies by attributes
+ * @param {Object} attributes
+ * @param {string[]} attributes.genres
+ * @param {string[]} attributes.directors
+ * @param {string[]} attributes.actors
+ * @param {number} attributes.runtime
+ * @param {string} attributes.language
+ * @param {number} attributes.releaseDecade
+ * @param {number} amount
+ * @returns {Promise<string[]>}
+ */
+async function recommendByAttributes(
+  {
+    genres = [],
+    directors = [],
+    actors = [],
+    runtime = null,
+    language = null,
+    releaseDecade = null,
+  },
+  amount = 10
+) {
+  const session = getSession();
+  const result = await session.run(
+    `
     MATCH (rec:Movie)
     
     // Genre match
@@ -244,24 +324,32 @@ async function recommendByAttributes({
     ORDER BY totalScore DESC
     LIMIT $amount
     `,
-        { genres, directors, actors, runtime, language, releaseDecade, amount: neo4j.int(amount) }
-    )
-    await session.close()
-    return result.records.map(r => r.get('title'))
+    {
+      genres,
+      directors,
+      actors,
+      runtime,
+      language,
+      releaseDecade,
+      amount: neo4j.int(amount),
+    }
+  );
+  await session.close();
+  return result.records.map((r) => r.get("title"));
 }
 
 export {
-    createMovie,
-    getMovie,
-    updateMovie,
-    deleteMovie,
-    getAllActors,
-    getGenre,
-    getDirector,
-    getMostPopular,
-    getLeastPopular,
-    getTop10InGenre,
-    recommendMoviesBySimilarity,
-    recommendContentBased,
-    recommendByAttributes
-}
+  createMovie,
+  getMovie,
+  updateMovie,
+  deleteMovie,
+  getAllActors,
+  getGenre,
+  getDirector,
+  getMostPopular,
+  getLeastPopular,
+  getTop10InGenre,
+  recommendMoviesBySimilarity,
+  recommendContentBased,
+  recommendByAttributes,
+};

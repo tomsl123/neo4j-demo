@@ -2,7 +2,6 @@ import { config } from "dotenv";
 import { expand } from "dotenv-expand";
 
 import neo4j from "neo4j-driver";
-import * as path from "node:path";
 
 expand(
   config({
@@ -20,7 +19,6 @@ function validateEnv() {
       "Missing required environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD"
     );
   }
-
   return {
     uri: process.env.NEO4J_URI,
     user: process.env.NEO4J_USER,
@@ -29,6 +27,11 @@ function validateEnv() {
 }
 export const env = validateEnv();
 
+/**
+/**
+ * Neo4j database driver instance.
+ * @type {import('neo4j-driver').Driver}
+ */
 const driver = neo4j.driver(env.uri, neo4j.auth.basic(env.user, env.password));
 
 /**
@@ -36,7 +39,7 @@ const driver = neo4j.driver(env.uri, neo4j.auth.basic(env.user, env.password));
  * @param {Object} params
  * @returns {Promise<Object[]>}
  */
-export async function query(cypher, params) {
+async function query(cypher, params) {
   const session = driver.session();
   // NOTE: we can also user driver.executeQuery(cypher, params) for Neo4j 5.x
   try {
@@ -49,8 +52,14 @@ export async function query(cypher, params) {
   }
 }
 
-export function getSession() {
+function getSession() {
   return driver.session();
 }
+
+const neo4j = {
+  driver,
+  query,
+  getSession,
+};
 
 await driver.close();
