@@ -20,6 +20,7 @@
   "description": "A simple node CLI application demonstrating Neo4j integration",
   "dependencies": {
     "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
     "dotenv": "^16.5.0",
     "dotenv-expand": "^12.0.2",
     "figlet": "^1.8.1",

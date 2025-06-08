@@ -20,7 +20,6 @@ function validateEnv() {
       "Missing required environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD"
     );
   }
-
   return {
     uri: process.env.NEO4J_URI,
     user: process.env.NEO4J_USER,
