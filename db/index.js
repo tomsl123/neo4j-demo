@@ -19,7 +19,6 @@ function validateEnv() {
       "Missing required environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD"
     );
   }
-
   return {
     uri: process.env.NEO4J_URI,
     user: process.env.NEO4J_USER,
@@ -28,11 +27,36 @@ function validateEnv() {
 }
 export const env = validateEnv();
 
-export const driver = neo4j.driver(
-  env.uri,
-  neo4j.auth.basic(env.user, env.password)
-);
+/**
+/**
+ * Neo4j database driver instance.
+ * @type {import('neo4j-driver').Driver}
+ */
+const driver = neo4j.driver(env.uri, neo4j.auth.basic(env.user, env.password));
 
-export function getSession() {
+/**
+ * @param {*} params
+ * @returns
+ */
+async function query(cypher, params) {
+  const session = driver.session();
+  // NOTE: we can also user driver.executeQuery(cypher, params) for Neo4j 5.x
+  try {
+    const result = await session.run(cypher, params);
+    return result.records.map((record) => record.toObject());
+  } finally {
+    await session.close();
+  }
+}
+
+function getSession() {
   return driver.session();
 }
+
+const neo4j = {
+  driver,
+  query,
+  getSession,
+};
+
+await driver.close();
