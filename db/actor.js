@@ -1,50 +1,110 @@
-import { getSession } from "./index";
+import {getSession} from "./index.js";
 
-/**
- * Creates a new actor in the database
- * @async
- * @param {Object} actorData - The actor data
- * @param {string} actorData.name - The name of the actor
- * @param {number} actorData.birthYear - The birth year of the actor
- * @returns {Promise<Object>} The created actor
- */
-async function create({ name, birthYear }) {
-  // TODO: Validate input data
-  // TODO: Handle errors gracefully
-  // TODO: Ensure unique actor names if required
+// Create actor (optionally connect to movie)
+async function createActor(name, movieTitle) {
+    const session = getSession()
+    try {
+        if (movieTitle) {
+            await session.run(
+                `
+        MERGE (a:Actor {name: $name})
+        WITH a
+        MATCH (m:Movie {title: $movieTitle})
+        MERGE (a)-[:ACTED_IN]->(m)
+        `,
+                { name, movieTitle }
+            )
+        } else {
+            await session.run(
+                'MERGE (a:Actor {name: $name})',
+                { name }
+            )
+        }
+    } finally {
+        await session.close()
+    }
 }
 
-/**
- * Retrieves an actor by their ID
- * @async
- * @param {string} actorId - The ID of the actor to retrieve
- * @returns {Promise<Object|null>} The actor data or null if not found
- */
-async function get(actorId) {
-  // TODO: Validate actorId
+// Get actor by name
+async function getActor(name) {
+    const session = getSession()
+    const result = await session.run(
+        'MATCH (a:Actor {name: $name}) RETURN a',
+        { name }
+    )
+    await session.close()
+    return result.records.map(r => r.get('a').properties)
 }
 
-/**
- * Updates an actor's information in the database
- * @async
- * @param {string} actorId - The ID of the actor to update
- * @param {Object} updates - The updates to apply
- * @param {string} [updates.name] - The new name for the actor
- * @param {number} [updates.birthYear] - The new birth year for the actor
- * @returns {Promise<Object>} The updated actor
- */
-async function updateActor(actorId, updates) {
-  // TODO: Validate input data
+// Update actor name
+async function updateActorName(oldName, newName) {
+    const session = getSession()
+    await session.run(
+        'MATCH (a:Actor {name: $oldName}) SET a.name = $newName',
+        { oldName, newName }
+    )
+    await session.close()
 }
 
-/**
- * Deletes an actor from the database
- * @async
- * @param {string} actorId - The ID of the actor to delete
- * @returns {Promise<boolean>} True if the actor was deleted, false otherwise
- */
-async function deleteActor(actorId) {
-  // TDO: Validate actorId``
+// Delete actor (and all relationships)
+async function deleteActor(name) {
+    const session = getSession()
+    await session.run(
+        'MATCH (a:Actor {name: $name}) DETACH DELETE a',
+        { name }
+    )
+    await session.close()
 }
 
-export { create, get, updateActor as update, deleteActor as delete };
+// Create relationship to movie
+async function relateActorToMovie(actorName, movieTitle) {
+    const session = getSession()
+    await session.run(
+        `
+    MATCH (a:Actor {name: $actorName}), (m:Movie {title: $movieTitle})
+    MERGE (a)-[:ACTED_IN]->(m)
+    `,
+        { actorName, movieTitle }
+    )
+    await session.close()
+}
+
+// Find which directors an actor has worked with
+async function findDirectorsForActor(actorName) {
+    const session = getSession()
+    const result = await session.run(
+        `
+    MATCH (a:Actor {name: $actorName})-[:ACTED_IN]->(m)<-[:DIRECTED_BY]-(d:Director)
+    RETURN DISTINCT d.name AS director
+    `,
+        { actorName }
+    )
+    await session.close()
+    return result.records.map(r => r.get('director'))
+}
+
+// Find genre they work the most in
+async function mostFrequentGenreForActor(actorName) {
+    const session = getSession()
+    const result = await session.run(
+        `
+    MATCH (a:Actor {name: $actorName})-[:ACTED_IN]->(m)-[:HAS_GENRE]->(g)
+    RETURN g.name AS genre, count(*) AS count
+    ORDER BY count DESC
+    LIMIT 1
+    `,
+        { actorName }
+    )
+    await session.close()
+    return result.records.length > 0 ? result.records[0].get('genre') : null
+}
+
+export {
+    createActor,
+    getActor,
+    updateActorName,
+    deleteActor,
+    relateActorToMovie,
+    findDirectorsForActor,
+    mostFrequentGenreForActor
+}

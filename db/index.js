@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { expand } from "dotenv-expand";
 
 import neo4j from "neo4j-driver";
+import * as path from "node:path";
 
 expand(
   config({
