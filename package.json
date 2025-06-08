@@ -1,0 +1,30 @@
+{
+  "name": "neo4j-demo",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "cli": "node ./cli/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomsl123/neo4j-demo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tomsl123/neo4j-demo/issues"
+  },
+  "homepage": "https://github.com/tomsl123/neo4j-demo#readme",
+  "description": "A simple node CLI application demonstrating Neo4j integration",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "dotenv": "^16.5.0",
+    "dotenv-expand": "^12.0.2",
+    "figlet": "^1.8.1",
+    "inquirer": "^12.6.3",
+    "nanospinner": "^1.2.2",
+    "neo4j-driver": "^5.28.1"
+  }
+}
