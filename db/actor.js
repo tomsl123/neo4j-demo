@@ -19,12 +19,44 @@ async function createActor(name, movieTitle) {
   return result;
 }
 
-// Get actor by name
+// Get actor by name (supports full-text search)
 async function getActor(name) {
+  const query = `CALL db.index.fulltext.queryNodes("actorName", $name) 
+      YIELD node, score
+      RETURN node as a
+      ORDER BY score DESC, a.name
+    `;
+
+  const result = await query(query, { name });
+  console.log(result);
+  return result.map((r) => r.get("a").properties);
+}
+
+async function searchActors(searchQuery = "*", genres = []) {
+  const result = await query(
+    `CALL db.index.fulltext.queryNodes("actorName", $searchQuery)
+     YIELD node, score
+     MATCH (node)-[:ACTED_IN]->(movie)-[:HAS_GENRE]->(genre)
+     WITH node, score, COLLECT(DISTINCT genre.name) as actorGenres
+     WHERE $genres = [] OR ANY(g IN $genres WHERE g IN actorGenres)
+     RETURN node as a, actorGenres
+     ORDER BY score DESC, a.name`,
+    { searchQuery, genres }
+  );
+
+  const actors = result.map((r) => ({
+    ...r.get("a").properties,
+    genres: r.get("actorGenres"),
+  }));
+
+  return actors;
+}
+
+async function getActors(name) {
   const result = await query("MATCH (a:Actor {name: $name}) RETURN a", {
     name,
   });
-  return result.records.map((r) => r.get("a").properties);
+  return result.map((r) => r.get("a").properties);
 }
 
 // Update actor name
@@ -85,4 +117,5 @@ export {
   mostFrequentGenreForActor,
   relateActorToMovie,
   updateActorName,
+  searchActors,
 };

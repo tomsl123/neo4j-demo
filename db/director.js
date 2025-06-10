@@ -37,24 +37,32 @@ async function getDirector(name) {
  * @returns {Promise<Object[]>} Returns all directors
  */
 async function getDirectors(search) {
-  const result = await session.run(
+  const result = await query(
     `CALL db.index.fulltext.queryNodes("directorFullTextIndex", $search) 
    YIELD node, score 
    RETURN node ORDER BY score DESC`,
     { search }
   );
-  return result.records.map((r) => r.get("node").properties);
+  return result.map((r) => r.get("node").properties);
 }
 
-// async function getDirectors(search = "") {
-//   const session = getSession();
-//   const result = await session.run(
-//     "MATCH (d:Director) WHERE d.name CONTAINS $search RETURN d",
-//     { search }
-//   );
-//   await session.close();
-//   return result.records.map((r) => r.get("d").properties);
-// }
+async function searchDirectors(search = "*", genres = []) {
+  const result = await query(
+    `CALL db.index.fulltext.queryNodes("directorFullTextIndex", $search) 
+     YIELD node, score 
+     MATCH (node)<-[:DIRECTED_BY]-(m)-[:HAS_GENRE]->(genre)
+     WITH node, score, COLLECT(DISTINCT genre.name) as directorGenres
+     WHERE $genres = [] OR ANY(g IN $genres WHERE g IN directorGenres)
+     RETURN node as d, directorGenres
+     ORDER BY score DESC, d.name`,
+    { search, genres }
+  );
+
+  return result.map((r) => ({
+    ...r.get("d").properties,
+    genres: r.get("directorGenres"),
+  }));
+}
 
 // Update director name
 async function updateDirectorName(oldName, newName) {
@@ -127,4 +135,5 @@ export {
   findActorsForDirector,
   getDirectors,
   mostFrequentGenreForDirector,
+  searchDirectors,
 };

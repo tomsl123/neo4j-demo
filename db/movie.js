@@ -47,16 +47,8 @@ async function getMovie(title) {
  * @param {string} title
  * @returns {Promise<Object>}
  */
-// async function searchMovie(title) {
-//   const result = await query(
-//     "MATCH (m:Movie) WHERE m.title CONTAINS $title RETURN m",
-//     { title }
-//   );
 
-//   return result.map((r) => r.get("m").properties);
-// }
-
-async function searchMovie(title = "") {
+async function searchMovie(title = "*") {
   const result = await query(
     `CALL db.index.fulltext.queryNodes("movieTitleIndex", $title) 
      YIELD node, score 
@@ -266,29 +258,32 @@ async function recommendContentBased(titles, amount = 10) {
     MATCH (m)-[:HAS_GENRE]->(g)<-[:HAS_GENRE]-(rec:Movie)
     WHERE NOT rec.title IN $titles
     
-    WITH rec, count(DISTINCT g) AS commonGenres, m
+    WITH rec, count(DISTINCT g) AS commonGenres, m, collect(DISTINCT g.name) as genres
     
     OPTIONAL MATCH (m)-[:DIRECTED_BY]->(d)<-[:DIRECTED_BY]-(rec)
-    WITH rec, commonGenres, count(DISTINCT d) AS commonDirectors, m
+    WITH rec, commonGenres, count(DISTINCT d) AS commonDirectors, m, genres
     
     OPTIONAL MATCH (m)<-[:ACTED_IN]-(a)<-[:ACTED_IN]-(rec)
-    WITH rec, commonGenres, commonDirectors, count(DISTINCT a) AS commonActors, m
+    WITH rec, commonGenres, commonDirectors, count(DISTINCT a) AS commonActors, m, genres
     
     OPTIONAL MATCH (rec)
     WHERE abs(m.runtime - rec.runtime) < 10
     
-    WITH rec, commonGenres, commonDirectors, commonActors, m
-    WITH rec, sum(commonGenres + commonDirectors + commonActors) AS totalScore
+    WITH rec, commonGenres, commonDirectors, commonActors, m, genres
+    WITH rec, sum(commonGenres + commonDirectors + commonActors) AS totalScore, genres
     
-    RETURN rec.title AS title, totalScore AS score
+    RETURN rec, totalScore AS score, genres
     ORDER BY score DESC
     LIMIT $amount
     `,
     { titles, amount: neo4j.int(amount) }
   );
   await session.close();
-  // TODO: return movies not jsut titles, but also genres, directors, etc.
-  return result.records.map((r) => r.get("title"));
+  return result.records.map((r) => ({
+    ...r.get("rec").properties,
+    genres: r.get("genres"),
+    score: r.get("score"),
+  }));
 }
 
 /**
@@ -297,25 +292,26 @@ async function recommendContentBased(titles, amount = 10) {
  * @param {string[]} attributes.genres
  * @param {string[]} attributes.directors
  * @param {string[]} attributes.actors
- * @param {number} attributes.runtime
- * @param {string} attributes.language
- * @param {number} attributes.releaseDecade
+ * @param {Object} attributes.runtime - Runtime range with min and max values
+ * @param {number} attributes.runtime.min - Minimum runtime in minutes
+ * @param {number} attributes.runtime.max - Maximum runtime in minutes
+ * @param {string[]} attributes.languages - Array of preferred languages
+ * @param {number[]} attributes.releaseDecades - Array of decades to match
  * @param {number} amount
- * @returns {Promise<string[]>}
+ * @returns {Promise<Object[]>} Array of movie objects with properties
  */
 async function recommendByAttributes(
   {
     genres = [],
     directors = [],
     actors = [],
-    runtime = null,
-    language = null,
-    releaseDecade = null,
+    runtime = { min: 0, max: 300 }, // Single object with min and max
+    languages = [],
+    releaseDecades = [],
   },
   amount = 10
 ) {
-  const session = getSession();
-  const result = await session.run(
+  const result = await query(
     `
     MATCH (rec:Movie)
     
@@ -339,24 +335,38 @@ async function recommendByAttributes(
          rec.original_language AS movieLanguage,
          rec.year AS movieYear
     
-    // Runtime similarity
+    // Runtime range match
     WITH rec, genreScore, directorScore, actorScore,
          CASE 
-           WHEN $runtime IS NOT NULL AND abs(movieRuntime - $runtime) < 10 THEN 1 
+           WHEN movieRuntime >= $runtime.min AND movieRuntime <= $runtime.max THEN 1 
            ELSE 0 
          END AS runtimeScore,
          CASE 
-           WHEN $language IS NOT NULL AND movieLanguage = $language THEN 1 
+           WHEN size($languages) > 0 AND movieLanguage IN $languages THEN 1 
            ELSE 0 
          END AS languageScore,
          CASE 
-           WHEN $releaseDecade IS NOT NULL AND floor(toInteger(movieYear) / 10) * 10 = $releaseDecade THEN 1 
+           WHEN size($releaseDecades) > 0 
+           AND floor(toInteger(movieYear) / 10) * 10 IN $releaseDecades THEN 1 
            ELSE 0 
          END AS decadeScore
     
     WITH rec, 
          genreScore + directorScore + actorScore + runtimeScore + languageScore + decadeScore AS totalScore
-    RETURN rec.title AS title, totalScore
+    
+    // Collect genres for each movie
+    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(g:Genre)
+    WITH rec, totalScore, collect(g.name) AS genres
+    
+    // Collect directors for each movie
+    OPTIONAL MATCH (rec)-[:DIRECTED_BY]->(d:Director)
+    WITH rec, totalScore, genres, collect(d.name) AS directors
+    
+    // Collect actors for each movie
+    OPTIONAL MATCH (rec)<-[:ACTED_IN]-(a:Actor)
+    WITH rec, totalScore, genres, directors, collect(a.name) AS actors
+    
+    RETURN rec, totalScore, genres, directors, actors
     ORDER BY totalScore DESC
     LIMIT $amount
     `,
@@ -365,13 +375,19 @@ async function recommendByAttributes(
       directors,
       actors,
       runtime,
-      language,
-      releaseDecade,
+      languages,
+      releaseDecades,
       amount: neo4j.int(amount),
     }
   );
-  await session.close();
-  return result.records.map((r) => r.get("title"));
+
+  return result.map((r) => ({
+    ...r.get("rec").properties,
+    genres: r.get("genres"),
+    directors: r.get("directors"),
+    actors: r.get("actors"),
+    score: r.get("totalScore"),
+  }));
 }
 
 export {
