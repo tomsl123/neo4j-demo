@@ -1,4 +1,4 @@
-import { getSession } from "./index.js";
+import { getSession, query } from "./index.js";
 import neo4j from "neo4j-driver";
 
 /**
@@ -41,6 +41,36 @@ async function getMovie(title) {
   });
   await session.close();
   return result.records.map((r) => r.get("m").properties);
+}
+/**
+ * Search a movie by title
+ * @param {string} title
+ * @returns {Promise<Object>}
+ */
+// async function searchMovie(title) {
+//   const result = await query(
+//     "MATCH (m:Movie) WHERE m.title CONTAINS $title RETURN m",
+//     { title }
+//   );
+
+//   return result.map((r) => r.get("m").properties);
+// }
+
+async function searchMovie(title = "") {
+  const result = await query(
+    `CALL db.index.fulltext.queryNodes("movieTitleIndex", $title) 
+     YIELD node, score 
+     OPTIONAL MATCH (node)<-[r:RATED]-()
+     WITH node, score, COUNT(r) as ratingCount
+     WHERE ratingCount > 0
+     OPTIONAL MATCH (node)-[:HAS_GENRE]->(g:Genre)
+     WITH node, score, ratingCount, collect(g.name) as genres
+     RETURN node, score, genres
+     ORDER BY score DESC`,
+    { title }
+  );
+
+  return result.map((r) => r.get("node").properties);
 }
 
 /**
@@ -195,7 +225,7 @@ async function getTop10InGenre(genreName) {
  * @param {number} amount
  * @returns {Promise<string[]>}
  */
-async function recommendMoviesBySimilarity(likedTitles, amount = 10) {
+async function recommendMoviesByUserSimilarity(likedTitles, amount = 10) {
   const session = getSession();
   const result = await session.run(
     `
@@ -205,14 +235,19 @@ async function recommendMoviesBySimilarity(likedTitles, amount = 10) {
     MATCH (u)-[r2:RATED]->(rec:Movie)
     WHERE r2.rating >= 4 AND NOT rec.title IN $likedTitles
     WITH rec, SUM(overlap) AS score, COUNT(DISTINCT u) AS voters
-    RETURN rec.title
+    MATCH (rec)-[:HAS_GENRE]->(g:Genre)
+    WITH rec, score, COLLECT(g.name) as genres
+    RETURN rec, genres
     ORDER BY score DESC
     LIMIT $amount
     `,
     { likedTitles, amount: neo4j.int(amount) }
   );
   await session.close();
-  return result.records.map((r) => r.get("rec.title"));
+  return result.records.map((r) => ({
+    ...r.get("rec").properties,
+    genres: r.get("genres"),
+  }));
 }
 
 /**
@@ -252,6 +287,7 @@ async function recommendContentBased(titles, amount = 10) {
     { titles, amount: neo4j.int(amount) }
   );
   await session.close();
+  // TODO: return movies not jsut titles, but also genres, directors, etc.
   return result.records.map((r) => r.get("title"));
 }
 
@@ -349,7 +385,8 @@ export {
   getMostPopular,
   getLeastPopular,
   getTop10InGenre,
-  recommendMoviesBySimilarity,
+  searchMovie,
+  recommendMoviesByUserSimilarity,
   recommendContentBased,
   recommendByAttributes,
 };

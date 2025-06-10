@@ -17,6 +17,13 @@ import chalk from "chalk";
 import { createSpinner } from "nanospinner";
 import { setTimeout } from "node:timers/promises";
 import Table from "cli-table3";
+import { getDirectors } from "../db/director.js";
+import {
+  recommendMoviesByUserSimilarity,
+  recommendContentBased,
+  recommendByAttributes,
+  searchMovie,
+} from "../db/movie.js";
 
 // import { get } from "../db/actor";
 
@@ -66,6 +73,32 @@ async function askUserPreferences() {
     return answers;
   }
 
+  const directorsAnswers = [];
+  let done = false;
+  do {
+    const answer = await inquirer.prompt({
+      type: "search",
+      name: "directors",
+      source: async (input) => {
+        if (!input) return [];
+        const directors = await getDirectors(input);
+        return directors.map((d) => d.name);
+      },
+      message: "Would you like to search for specific directors?",
+    });
+
+    directorsAnswers.push(answer.directors);
+
+    const confirm = await inquirer.prompt({
+      type: "confirm",
+      name: "addMore",
+      message: "Add more directors?",
+      default: false,
+    });
+
+    if (!confirm.addMore) break;
+  } while (!done);
+
   // Otherwise, use prompts
   const answers = await inquirer.prompt([
     {
@@ -96,6 +129,7 @@ async function askUserPreferences() {
           .map((a) => a.trim())
           .filter(Boolean),
     },
+
     {
       type: "checkbox",
       name: "languages",
@@ -178,112 +212,26 @@ async function askUserPreferences() {
 }
 
 /**
- * @param {UserPreferences} [preferences]
+ * Display movie recommendations in a formatted table
+ * @param {Object[]} movies - Array of movie objects
+ * @param {string[]} [preferences] - Optional preferences for filtering
  */
-// async function recommendMovies(preferences) {
-//   const spinner = createSpinner("Fetching movie recommendations...").start();
-//   await setTimeout(1500);
-//   spinner.success({ text: "🍿 Here's what you might enjoy:" });
-
-//   // 🎬 Dummy recommendation logic
-//   const recommendations = [
-//     { title: "Inception", genres: ["Sci-Fi", "Thriller"] },
-//     { title: "La La Land", genres: ["Romantic", "Musical"] },
-//     { title: "Parasite", genres: ["Drama", "Thriller"] },
-//   ];
-
-//   if (!preferences) {
-//     const m = recommendations.map(
-//       (m) => `  - ${m.title} (${m.genres.join(", ")})`
-//     );
-//     console.log(chalk.yellow(m.join("\n")));
-//     return;
-//   }
-
-//   // Filter recommendations based on user preferences
-//   const filtered = recommendations.filter((movie) =>
-//     preferences.genres.some((genre) => movie.genres.includes(genre))
-//   );
-
-//   if (filtered.length === 0) {
-//     console.log(chalk.red("❌ No recommendations found."));
-//   } else {
-//     console.log(
-//       chalk.yellow(
-//         filtered
-//           .map((m) => `  - ${m.title} (${m.genres.join(", ")})`)
-//           .join("\n")
-//       )
-//     );
-//   }
-// }
-
-const recommendations = [
-  {
-    title: "Inception",
-    genres: ["Action", "Science Fiction", "Adventure"],
-    vote_average: 8.364,
-    vote_count: 34495,
-    release_date: "2010-07-15",
-    runtime: 148,
-    overview:
-      "Cobb, a skilled thief who commits corporate espionage by infiltrating the subconscious of his targets is offered a chance to regain his old life as payment for a task considered to be impossible: \"inception\", the implantation of another person's idea into a target's subconscious.",
-    original_language: "en",
-    spoken_languages: ["English", "French", "Japanese", "Swahili"],
-    production_companies: [
-      "Legendary Pictures",
-      "Syncopy",
-      "Warner Bros. Pictures",
-    ],
-  },
-  {
-    title: "La La Land",
-    genres: ["Romance", "Drama", "Music"],
-    vote_average: 8.0,
-    vote_count: 15000,
-    release_date: "2016-12-09",
-    runtime: 128,
-    overview: "A jazz pianist falls for an aspiring actress in Los Angeles.",
-    original_language: "en",
-    spoken_languages: ["English"],
-    production_companies: ["Summit Entertainment", "Black Label Media"],
-  },
-  {
-    title: "Parasite",
-    genres: ["Drama", "Thriller", "Comedy"],
-    vote_average: 8.6,
-    vote_count: 25000,
-    release_date: "2019-05-30",
-    runtime: 132,
-    overview:
-      "All unemployed, Ki-taek and his family take peculiar interest in the wealthy and glamorous Parks, as they ingratiate themselves into their lives and get entangled in an unexpected incident.",
-    original_language: "ko",
-    spoken_languages: ["Korean", "English"],
-    production_companies: ["CJ Entertainment", "Barunson E&A"],
-  },
-];
-
-async function recommendMovies(preferences) {
-  const spinner = createSpinner("Fetching movie recommendations...").start();
-  await setTimeout(1500);
-  spinner.success({ text: "🍿 Here's what you might enjoy:" });
-
+function displayMovieTable(movies, preferences = null) {
   const table = new Table({
     head: [
       chalk.blue("Title"),
       chalk.blue("Genres"),
-      chalk.blue("Rating"),
       chalk.blue("Runtime"),
       chalk.blue("Release Date"),
     ],
-    colWidths: [25, 25, 10, 10, 15],
+    colWidths: [25, 25, 10, 15],
   });
 
-  let filtered = recommendations;
+  let filtered = movies;
 
-  if (preferences && preferences.genres?.length > 0) {
-    filtered = recommendations.filter((movie) =>
-      preferences.genres.some((genre) => movie.genres.includes(genre))
+  if (preferences?.genres?.length > 0) {
+    filtered = movies.filter((movie) =>
+      preferences.genres.some((genre) => movie.genres?.includes(genre))
     );
   }
 
@@ -295,43 +243,122 @@ async function recommendMovies(preferences) {
   filtered.forEach((movie) => {
     table.push([
       movie.title,
-      movie.genres.join(", "),
-      movie.vote_average.toFixed(1),
-      `${movie.runtime} min`,
-      movie.release_date,
+      movie.genres?.join(", ") || "N/A",
+      `${movie.runtime || "N/A"} min`,
+      movie.release_date || "N/A",
     ]);
   });
 
   console.log(table.toString());
 }
 
+/**
+ * Get movie recommendations based on user input
+ * @param {string} type - Type of recommendation ('user', 'content', or 'attributes')
+ * @param {Object} [preferences] - User preferences for attribute-based recommendations
+ * @returns {Promise<Object[]>} Array of recommended movies
+ */
+async function getRecommendations(type, preferences = null) {
+  const spinner = createSpinner("Fetching movie recommendations...").start();
+  await setTimeout(1500);
+
+  try {
+    let recommendations;
+    switch (type) {
+      case "user":
+        recommendations = await recommendMoviesByUserSimilarity(
+          preferences?.likedMovies || []
+        );
+        break;
+      case "content":
+        recommendations = await recommendContentBased(
+          preferences?.likedMovies || []
+        );
+        break;
+      case "attributes":
+        recommendations = await recommendByAttributes({
+          genres: preferences?.genres || [],
+          directors: preferences?.directors || [],
+          actors: preferences?.actors || [],
+          runtime: preferences?.runtime,
+          language: preferences?.languages?.[0],
+          releaseDecade: preferences?.era?.[0]?.replace("s", ""),
+        });
+        break;
+      default:
+        throw new Error("Invalid recommendation type");
+    }
+    spinner.success({ text: "🍿 Here's what you might enjoy:" });
+    return recommendations;
+  } catch (error) {
+    spinner.error({ text: "Failed to get recommendations" });
+    throw error;
+  }
+}
+
+/**
+ * Collect user's liked movies
+ * @returns {Promise<string[]>} Array of movie titles
+ */
+async function collectLikedMovies() {
+  const preferences = [];
+  let done = false;
+
+  do {
+    const { movie } = await inquirer.prompt({
+      type: "search",
+      name: "movie",
+      source: async (input) => {
+        if (!input) return [];
+        const movies = await searchMovie(input);
+        return movies.map((m) => m.title);
+      },
+      message: "Search for a movie you like:",
+    });
+
+    preferences.push(movie);
+
+    const { addMore } = await inquirer.prompt({
+      type: "confirm",
+      name: "addMore",
+      message: "Add another movie?",
+      default: false,
+    });
+    done = !addMore;
+  } while (!done);
+
+  return preferences;
+}
+
 async function main() {
   showHeader();
 
   try {
-    await inquirer.prompt([
-      {
-        type: "input",
-        name: "username",
-        message: "Please enter your username",
-      },
-    ]);
+    const { algorithm } = await inquirer.prompt({
+      type: "select",
+      name: "algorithm",
+      message: "Which type of recommendations would you like?",
+      choices: [
+        { name: "Based on users who like the same movies", value: "user" },
+        { name: "Based on similar movies", value: "content" },
+        { name: "Based on your preferences", value: "attributes" },
+        { name: "I don't know", value: "unknown" },
+      ],
+    });
 
-    const spinner = createSpinner(
-      "Preparing your personalized survey..."
-    ).start();
-    await setTimeout(1500);
-    spinner.success({ text: "Survey ready!" });
+    let preferences = null;
 
-    if (inlineFlags.recommend) {
-      const spinner2 = createSpinner("Analyzing your taste...").start();
-      await setTimeout(1500);
-      spinner2.success({ text: "Done!" });
-      recommendMovies();
-    } else {
-      const preferences = await askUserPreferences();
-      await recommendMovies(preferences);
+    if (algorithm === "unknown") {
+      console.log(chalk.yellow("🤔 Let's find out your preferences first!"));
+      preferences = await askUserPreferences();
+    } else if (algorithm === "user" || algorithm === "content") {
+      preferences = { likedMovies: await collectLikedMovies() };
+    } else if (algorithm === "attributes") {
+      preferences = await askUserPreferences();
     }
+
+    const recommendations = await getRecommendations(algorithm, preferences);
+    displayMovieTable(recommendations, preferences);
   } catch (error) {
     console.error(chalk.red("❌ Oops!! An error occurred:"), error.message);
   }

@@ -40,7 +40,7 @@ export async function query(cypher, params) {
   // NOTE: we can also user driver.executeQuery(cypher, params) for Neo4j 5.x
   try {
     const result = await session.run(cypher, params);
-    return result.records.map((record) => record.toObject());
+    return result.records.map((record) => record);
   } catch (error) {
     console.error(error);
   } finally {
