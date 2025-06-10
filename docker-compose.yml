@@ -4,7 +4,7 @@ services:
   ############################################
   neo4j:
     image: neo4j:latest
-    container_name: neo4j_dev
+    container_name: neo4j
     volumes:
       - ./neo4j/logs:/logs
       - ./neo4j/config:/config
